@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+#
+# OpenAI CLI v1.0
+#   Created by @janlay
+#
+
+set -eo pipefail
+
+# env vars can be overridden by command line arguments
+OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-200}"
+OPENAI_DATA_DIR="${OPENAI_DATA_DIR:-$HOME/.openai}"
+
+# defaults
+readonly _app_name=openai _app_version=1.0
+readonly default_api_version=1 default_api_name=chat/completions default_model=gpt-3.5-turbo default_temperature=0.5 default_topic=General
+
+declare -i chat_mode=0 dry_run=0
+declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_version=$default_api_version api_name=$default_api_name model=$default_model temperature=$default_temperature topic=$default_topic prompt_file payload_file data_file prompt
+
+trap cleanup EXIT
+cleanup() {
+	[ -z "$payload_file" ] || rm -f -- "$payload_file"
+}
+
+raise_error() {
+	[ "$2" = 0 ] || echo -n "$_app_name: " >&2
+	echo -e "$1" >&2
+	exit "${2:-1}"
+}
+
+load_conversation() {
+	[ -f "$data_file" ] && cat "$data_file" || echo '{}'
+}
+
+update_conversation() {
+	local data
+	data=$(load_conversation)
+	jq --arg role "$1" --arg content "$2" '.messages += [{$role, $content}]' <<<"$data" >"$data_file"
+}
+
+save_tokens() {
+	local data num="$1"
+	[ -f "$data_file" ] && {
+		data=$(load_conversation)
+		jq --argjson tokens "$num" '.total_tokens += $tokens' <<<"$data" >"$data_file"
+	}
+
+	data=0
+	[ -f "$tokens_file" ] && data=$(cat "$tokens_file")
+	echo "$((data + num))" >"$tokens_file"
+}
+
+read_prompt() {
+	# read prompt from file or stdin or args, if specified
+	if [ -n "$prompt_file" ]; then
+		[ "$prompt_file" = - ] || {
+			[ -f "$prompt_file" ] || raise_error "File not found: $prompt_file." 3
+			prompt=$(cat "$prompt_file")
+			[ -n "$prompt" ] || raise_error "Empty file: $prompt_file." 4
+		}
+	else
+		[ -n "$prompt" ] || prompt=$(cat)
+	fi
+}
+
+openai_models() {
+	call_api | jq
+}
+
+openai_chat_completions() {
+	read_prompt
+
+	local payload data
+	payload=$(jq -cn --arg model "$model" --argjson temperature "$temperature" --argjson max_tokens "$OPENAI_MAX_TOKENS" '{$model, $temperature, $max_tokens, stream: true, messages: []}')
+	data=$(load_conversation | jq .messages)
+	[ "$topic" != "$default_topic" ] && {
+		if [ $chat_mode -eq 1 ]; then
+			# load all messages for chat mode
+			payload=$(jq -c --argjson messages "$data" 'setpath(["messages"]; $messages)' <<<"$payload")
+		else
+			# load only first message for non-chat mode
+			payload=$(jq -c --argjson messages "$data" 'setpath(["messages"]; [$messages[0]])' <<<"$payload")
+		fi
+	}
+	# append user's prompt to messages
+	payload_file=$(mktemp)
+	jq -c --arg content "$prompt" '.messages += [{role: "user", $content}]' <<<"$payload" >"$payload_file"
+
+	local chunk reason text
+	call_api | while read -r chunk; do
+		chunk=$(cut -d: -f2- <<<"$chunk")
+		reason=$(jq -r '.choices[0].finish_reason // empty' <<<"$chunk")
+		[ "$reason" = stop ] && break
+		[ -n "$reason" ] && raise_error "API error: $reason" 10
+
+		chunk=$(jq -r '.choices[0].delta.content // empty' <<<"$chunk")
+		text="$text$chunk"
+		echo -n "$chunk"
+	done
+
+	# append response to topic file for chat mode
+	[ "$chat_mode" -eq 1 ] && {
+		update_conversation user "$prompt"
+		update_conversation assistant "$text"
+	}
+	echo
+}
+
+# shellcheck disable=SC2120
+call_api() {
+	local url="$OPENAI_API_ENDPOINT/v$api_version/$api_name" auth="Bearer $OPENAI_API_KEY"
+
+	# dry-run mode
+	[ "$dry_run" -eq 1 ] && {
+		echo "Dry-run mode, no API calls made."
+		echo -e "\nRequest URL:\n--------------\n$url"
+		echo -en "\nAuthorization:\n--------------\n"
+		sed -E 's/(sk-.{3}).{41}/\1****/' <<<"$auth"
+		[ -n "$payload_file" ] && {
+			echo -e "\nPayload:\n--------------"
+			jq <"$payload_file"
+		}
+		exit 0
+	} >&2
+
+	local args=("$url" --no-buffer -fsSL -H 'Content-Type: application/json' -H "Authorization: $auth")
+	[ -n "$payload_file" ] && args+=(-d @"$payload_file")
+	[ $# -gt 0 ] && args+=("$@")
+
+	curl "${args[@]}"
+}
+
+create_topic() {
+	read_prompt
+	update_conversation system "$prompt"
+	raise_error "Topic '$topic' created with initial prompt '$prompt'" 0
+}
+
+usage() {
+	raise_error "OpenAI Client v$_app_version
+
+SYNOPSIS
+  $_app_name [options] [@TOPIC] [-f file | prompt ...]
+
+OPTIONS
+  prompt
+		Specify prompt string for the request to OpenAI API. This can consist of multiple
+		arguments, which are considered to be separated by spaces.
+  -f file
+		A file to be read as prompt. If file is - or neither this parameter nor a prompt
+		is specified, read from standard input.
+  -c
+  		Continues the topic, the default topic is '$default_topic'.
+  -v version
+		API version, default is '$default_api_version'.
+  -a name
+		API name, default is '$default_api_name'.
+  -m model
+		Model, default is '$default_model'.
+  -t temperature
+		Temperature, default is '$default_temperature'.
+  -n
+		Dry-run mode, don't call API.
+
+  --
+  		Ignore rest of arguments, useful when unquoted prompt consists of '-'.
+
+  -h
+  		Show this help
+
+  If topic doesn't exist, prompt used as the initial prompt." 0
+}
+
+parse() {
+	local opt
+	while getopts 'v:a:m:t:f:cnsh' opt; do
+		case "$opt" in
+		c)
+			chat_mode=1
+			;;
+		v)
+			api_version="$OPTARG"
+			;;
+		a)
+			api_name="$OPTARG"
+			;;
+		m)
+			model="$OPTARG"
+			;;
+		t)
+			temperature="$OPTARG"
+			;;
+		f)
+			prompt_file="$OPTARG"
+			;;
+		n)
+			dry_run=1
+			;;
+		h | ?)
+			usage
+			;;
+		esac
+	done
+	shift "$((OPTIND - 1))"
+
+	# extract the leading topic
+	[[ "$1" =~ ^@ ]] && {
+		topic="${1#@}"
+		shift
+	}
+
+	[ $chat_mode -eq 0 ] || {
+		[[ -n $topic && $topic != "$default_topic" ]] || raise_error 'Topic is required for chatting.' 2
+	}
+
+	prompt="$*"
+}
+
+check_bin() {
+	command -v "$1" >/dev/null || raise_error "$1 not found. Use package manager (Homebrew, apt-get etc.) to install it." "${2:-1}"
+}
+
+main() {
+	parse "$@"
+	check_bin jq 10
+
+	mkdir -p "$OPENAI_DATA_DIR"
+	data_file="$OPENAI_DATA_DIR/$topic.json"
+
+	if [[ $topic == "$default_topic" || -f "$data_file" ]]; then
+		[ -z "$OPENAI_API_KEY" ] && raise_error 'OpenAI API key is required.' 11
+
+		local fn="openai_${api_name//\//_}"
+		[ "$(type -t "$fn")" = function ] || raise_error "API '$api_name' is not available." 12
+		"$fn" "$prompt"
+	else
+		create_topic "$prompt"
+	fi
+}
+
+main "$@"
