@@ -2,9 +2,9 @@
 A universal cli for OpenAI, written in BASH.
 
 # Features
-- [x] scalable architecture allows for continuous support of new APIs.
+- [x] Scalable architecture allows for continuous support of new APIs.
 - [x] Custom API name, version, and related parameters.
-- [x] Dry-run mode is provided (without actually initiating API calls) to facilitate debugging of APIs and save costs.
+- [x] Dry-run mode (without actually initiating API calls) to facilitate debugging of APIs and save costs.
 - Features related to `chat/completions`:
 
       - [x] Complete pipelining to interoperate with other applications
