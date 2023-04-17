@@ -5,7 +5,8 @@ A universal cli for OpenAI, written in BASH.
 - [x] scalable architecture allows for continuous support of new APIs.
 - [x] Custom API name, version, and related parameters.
 - [x] Dry-run mode is provided (without actually initiating API calls) to facilitate debugging of APIs and save costs.
-- [x] Features related to `chat/completions`:
+- Features related to `chat/completions`:
+
       - [x] Complete pipelining to interoperate with other applications
       - [x] Allow prompts to be read from command line arguments, files, and standard input
       - [x] Support streaming
@@ -18,9 +19,10 @@ A universal cli for OpenAI, written in BASH.
   - Linux: `sudo apt install jq`
   - macOS: `brew install jq`
 - Download script and mark it executable:
-  ````bash
+  ```bash
   curl -fsSLOJ https://raw.githubusercontent.com/janlay/openai-cli/master/openai
-  chmod +x openai```
+  chmod +x openai
+  ```
   You may want to add this file to a directory in `$PATH`. 
 
 Now you can try it out!
@@ -29,7 +31,7 @@ Now you can try it out!
 ## Getting started
 First of all, run `openai -h` to grab help.
 
-If you run `openai` directly, it appears to be stuck. This is because `openai` expects to receive prompt content from stdin, but the stdin has no content available yet. Just press Ctrl+C to interrupt and exit.
+⚠️ If you run `openai` directly, it appears to be stuck. This is because `openai` expects to receive prompt content from stdin, but the stdin has no content available yet. Just press Ctrl+C to interrupt and exit.
 
 ## OpenAI key
 `$OPENAI_API_KEY` must be available to use this tool. Prepare your OpenAI key in `~/.profile` file by adding this line:
