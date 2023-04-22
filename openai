@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v1.0
+# OpenAI CLI v2.0
 #   Created by @janlay
 #
 
@@ -13,15 +13,16 @@ OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-200}"
 OPENAI_DATA_DIR="${OPENAI_DATA_DIR:-$HOME/.openai}"
 
 # defaults
-readonly _app_name=openai _app_version=1.0
-readonly default_api_version=1 default_api_name=chat/completions default_model=gpt-3.5-turbo default_temperature=0.5 default_topic=General
+readonly _app_name=openai _app_version=2.0
+readonly default_api_version=1 default_api_name=chat/completions default_model=gpt-3.5-turbo default_topic=General
 
 declare -i chat_mode=0 dry_run=0
-declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_version=$default_api_version api_name=$default_api_name model=$default_model temperature=$default_temperature topic=$default_topic prompt_file payload_file data_file prompt
+declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_version=$default_api_version api_name=$default_api_name topic=$default_topic
+declare data_file temp_dir rest_args prompt_file prompt
 
 trap cleanup EXIT
 cleanup() {
-	[ -z "$payload_file" ] || rm -f -- "$payload_file"
+	[ -d "$temp_dir" ] || rm -f -- "$temp_dir"
 }
 
 raise_error() {
@@ -53,15 +54,32 @@ save_tokens() {
 }
 
 read_prompt() {
-	# read prompt from file or stdin or args, if specified
-	if [ -n "$prompt_file" ]; then
-		[ "$prompt_file" = - ] || {
-			[ -f "$prompt_file" ] || raise_error "File not found: $prompt_file." 3
-			prompt=$(cat "$prompt_file")
-			[ -n "$prompt" ] || raise_error "Empty file: $prompt_file." 4
-		}
-	else
-		[ -n "$prompt" ] || prompt=$(cat)
+	# read prompt from args first
+	local word accepts_props=1 props='{}' real_prompt
+	if [ ${#rest_args[@]} -gt 0 ]; then
+		# read file $prompt_file word by word, and extract words starting with '+'
+		for word in "${rest_args[@]}"; do
+			if [ $accepts_props -eq 1 ] && [ "${word:0:1}" = '+' ]; then
+				word="${word:1}"
+				# determine value's type for jq
+				local options=(--arg key "${word%%=*}") value="${word#*=}" arg=--arg
+				[[ $value =~ ^[+-]?\ ?[0-9.]+$ || $value = true || $value = false || $value =~ ^[\[\{]* ]] && arg=--argjson
+				options+=("$arg" value "$value")
+				props=$(jq "${options[@]}" '.[$key] = $value' <<<"$props")
+			else
+				real_prompt="$real_prompt $word"
+				accepts_props=0
+			fi
+		done
+		[ -n "$props" ] && echo "$props" >"$temp_dir/props"
+	fi
+
+	if [ -n "$real_prompt" ]; then
+		[ -n "$prompt_file" ] && echo "* Prompt file \`$prompt_file' will be ignored as the prompt parameters are provided." >&2
+		echo -n "${real_prompt:1}" >"$temp_dir/prompt"
+	elif [ -n "$prompt_file" ]; then
+		[ -f "$prompt_file" ] || raise_error "File not found: $prompt_file." 3
+		[[ -s $prompt_file ]] || raise_error "Empty file: $prompt_file." 4
 	fi
 }
 
@@ -70,23 +88,27 @@ openai_models() {
 }
 
 openai_chat_completions() {
-	read_prompt
+	local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"temperature\": 0.5, \"max_tokens\": $OPENAI_MAX_TOKENS}"
 
-	local payload data
-	payload=$(jq -cn --arg model "$model" --argjson temperature "$temperature" --argjson max_tokens "$OPENAI_MAX_TOKENS" '{$model, $temperature, $max_tokens, stream: true, messages: []}')
+	# overwrite default properties with user's
+	read_prompt
+	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '(. += $user_props) | . += {messages: []}' <<<"$payload")
+
+	local data
 	data=$(load_conversation | jq .messages)
 	[ "$topic" != "$default_topic" ] && {
 		if [ $chat_mode -eq 1 ]; then
 			# load all messages for chat mode
-			payload=$(jq -c --argjson messages "$data" 'setpath(["messages"]; $messages)' <<<"$payload")
+			payload=$(jq --argjson messages "$data" 'setpath(["messages"]; $messages)' <<<"$payload")
 		else
 			# load only first message for non-chat mode
-			payload=$(jq -c --argjson messages "$data" 'setpath(["messages"]; [$messages[0]])' <<<"$payload")
+			payload=$(jq --argjson messages "$data" 'setpath(["messages"]; [$messages[0]])' <<<"$payload")
 		fi
 	}
 	# append user's prompt to messages
-	payload_file=$(mktemp)
-	jq -c --arg content "$prompt" '.messages += [{role: "user", $content}]' <<<"$payload" >"$payload_file"
+	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
+	[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
+	jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
 
 	local chunk reason text
 	call_api | while read -r chunk; do
@@ -142,25 +164,36 @@ usage() {
 	raise_error "OpenAI Client v$_app_version
 
 SYNOPSIS
-  $_app_name [options] [@TOPIC] [-f file | prompt ...]
+  ABSTRACT
+    $_app_name [-n] [-a api_name] [-v api_version] [ARGS...]
 
-OPTIONS
-  prompt
-		Specify prompt string for the request to OpenAI API. This can consist of multiple
-		arguments, which are considered to be separated by spaces.
-  -f file
-		A file to be read as prompt. If file is - or neither this parameter nor a prompt
-		is specified, read from standard input.
-  -c
-  		Continues the topic, the default topic is '$default_topic'.
+  DEFAULT_API (v$default_api_version/$default_api_name)
+    $_app_name [-c] [+property=value...] [@TOPIC] [-f file | prompt ...]
+	prompt
+			Specify prompt string for the request to OpenAI API. This can consist of multiple
+			arguments, which are considered to be separated by spaces.
+	-f file
+			A file to be read as prompt. If file is - or neither this parameter nor a prompt
+			is specified, read from standard input.
+	-c
+			Continues the topic, the default topic is '$default_topic'.
+	property=value
+			Overwrite default properties in payload. Prepend a plus sign '+' before property=value.
+			eg: +model=gpt-3.5-turbo-0301, +stream=false
+	
+	TOPICS
+			Topic starts with an at sign '@'.
+			To create new topic, use \`$_app_name @new_topic initial prompt'
+  
+  OTHER APIS
+    $_app_name -a models
+
+GLOBAL OPTIONS
+  Global options apply to all APIs.
   -v version
 		API version, default is '$default_api_version'.
   -a name
 		API name, default is '$default_api_name'.
-  -m model
-		Model, default is '$default_model'.
-  -t temperature
-		Temperature, default is '$default_temperature'.
   -n
 		Dry-run mode, don't call API.
 
@@ -168,9 +201,7 @@ OPTIONS
   		Ignore rest of arguments, useful when unquoted prompt consists of '-'.
 
   -h
-  		Show this help
-
-  If topic doesn't exist, prompt used as the initial prompt." 0
+  		Show this help" 0
 }
 
 parse() {
@@ -186,14 +217,9 @@ parse() {
 		a)
 			api_name="$OPTARG"
 			;;
-		m)
-			model="$OPTARG"
-			;;
-		t)
-			temperature="$OPTARG"
-			;;
 		f)
 			prompt_file="$OPTARG"
+			[ "$prompt_file" = - ] && prompt_file=
 			;;
 		n)
 			dry_run=1
@@ -215,7 +241,7 @@ parse() {
 		[[ -n $topic && $topic != "$default_topic" ]] || raise_error 'Topic is required for chatting.' 2
 	}
 
-	prompt="$*"
+	rest_args=("$@")
 }
 
 check_bin() {
@@ -228,15 +254,16 @@ main() {
 
 	mkdir -p "$OPENAI_DATA_DIR"
 	data_file="$OPENAI_DATA_DIR/$topic.json"
+	temp_dir=$(mktemp -d)
 
 	if [[ $topic == "$default_topic" || -f "$data_file" ]]; then
 		[ -z "$OPENAI_API_KEY" ] && raise_error 'OpenAI API key is required.' 11
 
 		local fn="openai_${api_name//\//_}"
 		[ "$(type -t "$fn")" = function ] || raise_error "API '$api_name' is not available." 12
-		"$fn" "$prompt"
+		"$fn"
 	else
-		create_topic "$prompt"
+		create_topic
 	fi
 }
 

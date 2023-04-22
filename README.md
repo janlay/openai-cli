@@ -3,16 +3,20 @@ A universal cli for OpenAI, written in BASH.
 
 # Features
 - [x] Scalable architecture allows for continuous support of new APIs.
-- [x] Custom API name, version, and related parameters.
+- [x] Custom API name, version, and all relevant properties.
 - [x] Dry-run mode (without actually initiating API calls) to facilitate debugging of APIs and save costs.
 
-The main API `chat/completions` provides:
-  - [x] Complete pipelining to interoperate with other applications
-  - [x] Allow prompts to be read from command line arguments, file, and stdin
-  - [x] Support streaming
-  - [x] Support multiple topics
-  - [x] Support continuous conversations.
-  - [ ] Token usage
+Available APIs:
+- [x] `chat/completions` (default API)
+- [x] `models`
+
+The default API `chat/completions` provides:
+- [x] Complete pipelining to interoperate with other applications
+- [x] Allow prompts to be read from command line arguments, file, and stdin
+- [x] Support streaming
+- [x] Support multiple topics
+- [x] Support continuous conversations.
+- [ ] Token usage
 
 # Installation
 - [jq](https://stedolan.github.io/jq/) is required.
@@ -37,20 +41,47 @@ To begin, type `openai -h` to access the help manual.
 
 ⚠️ If you run `openai` directly, it may appear to be stuck because it expects prompt content from stdin which is not yet available. To exit, simply press Ctrl+C to interrupt the process.
 
-## Why are you so serious?
+<details>
+  <summary>Why are you so serious?</summary>
 What happens when the `openai` command is executed without any parameters? It means that:
 - The default API used will be `chat/completions`, and the schema version will be `v1`.
 - The prompt will be read from stdin.
 - The program will wait for input while stdin remains empty.
+</details>
+
+## Quick Examples
+The best way to understand how to use `openai` is to see various usage cases.
+- Debug API data for testing purposes  
+  `openai -n foo bar`
+- Say hello to OpenAI  
+  `openai Hello`
+- Use another model  
+  `openai +model=gpt-3.5-turbo-0301 Hello`
+- Disable streaming, allow for more variation in answer  
+  `openai +stream=false +temperature=1.1 Hello`
+- Call another available API  
+  `openai -a models`
+- Create a topic named `en2fr` with initial prompt  
+  `openai @en2fr Translate to French`
+- Use existing topic  
+  `openai @en2fr Hello, world!`
+- Read prompt from clipboard then send result to another topic  
+  `pbpaste | openai | openai @en2fr`
 
 ## Providing prompt
 There are multiple ways to obtain a prompt using `openai`:
-- Enclose the prompt in single quotes `'` or double quotes `"`
-- Use any argument that does not begin with a minus sign `-`
-- Place any arguments after `--`
-- Input from stdin
-- Specify a file path with `-f /path/to/file`
-- Use `-f-` for input from stdin
+- Enclose the prompt in single quotes `'` or double quotes `"`  
+  `openai "Please help me translate '你好' into English"`
+- Use any argument that does not begin with a minus sign `-`  
+  `openai Hello, world!`
+- Place any arguments after `--`  
+  `openai -n -- What is the purpose of the -- argument in Linux commands`
+- Input from stdin  
+  `echo 'Hello, world!' | openai`
+- Specify a file path with `-f /path/to/file`  
+  `openai -f question.txt`
+- Use `-f-` for input from stdin  
+  `cat question.txt | openai -f-`
 
 Choose any one you like :-)
 
@@ -64,7 +95,7 @@ Or you may want to run with a temporary key for one-time use:
 OPENAI_API_KEY=sk-**** openai hello
 ```
 
-## Testing your API invocation
+## Testing your API invocations
 `openai` offers a [dry-run mode](https://en.wikipedia.org/wiki/Dry_run) that allows you to test command composition without incurring any costs. Give it a try!
 
 ```bash
@@ -106,9 +137,11 @@ Payload:
 ```
 </details>
 With full pipelining support, you can achieve the same functionality using alternative methods:
+
 ```bash
 echo 'hello, world!' | openai -n
 ```
+
 <details>
 <summary>For BASH gurus</summary>
 
