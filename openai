@@ -87,6 +87,51 @@ openai_models() {
 	call_api | jq
 }
 
+openai_moderations() {
+	local prop_file="$temp_dir/props" payload="{\"model\": \"text-moderation-latest\"}"
+
+	# overwrite default properties with user's
+	read_prompt
+	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '. += $user_props' <<<"$payload")
+
+	# append user's prompt to messages
+	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
+	[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
+	jq -Rs -cn --argjson payload "$payload" '$payload | .input = input' "$input_file" >"$payload_file"
+
+	call_api | jq -c '.results[]'
+}
+
+openai_images_generations() {
+	local prop_file="$temp_dir/props" payload="{\"n\": 1, \"size\": \"1024x1024\"}"
+
+	# overwrite default properties with user's
+	read_prompt
+	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '(. += $user_props) | . += {response_format: "url"}' <<<"$payload")
+
+	# append user's prompt to messages
+	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
+	[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
+	jq -Rs -cn --argjson payload "$payload" '$payload | .prompt = input' "$input_file" >"$payload_file"
+
+	call_api | jq -r '.data[].url'
+}
+
+openai_embeddings() {
+	local prop_file="$temp_dir/props" payload="{\"model\": \"text-embedding-ada-002\"}"
+
+	# overwrite default properties with user's
+	read_prompt
+	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '. += $user_props' <<<"$payload")
+
+	# append user's prompt to messages
+	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
+	[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
+	jq -Rs -cn --argjson payload "$payload" '$payload | .input = input' "$input_file" >"$payload_file"
+
+	call_api | jq -c
+}
+
 openai_chat_completions() {
 	local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"temperature\": 0.5, \"max_tokens\": $OPENAI_MAX_TOKENS}"
 

@@ -9,6 +9,9 @@ A universal cli for OpenAI, written in BASH.
 Available APIs:
 - [x] `chat/completions` (default API)
 - [x] `models`
+- [x] `images/generations`
+- [x] `embeddings`
+- [x] `moderations`
 
 The default API `chat/completions` provides:
 - [x] Complete pipelining to interoperate with other applications
