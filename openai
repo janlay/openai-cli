@@ -157,12 +157,18 @@ openai_chat_completions() {
 
 	local chunk reason text
 	call_api | while read -r chunk; do
+		[ -z "$chunk" ] && continue
 		chunk=$(cut -d: -f2- <<<"$chunk")
 		reason=$(jq -r '.choices[0].finish_reason // empty' <<<"$chunk")
 		[ "$reason" = stop ] && break
 		[ -n "$reason" ] && raise_error "API error: $reason" 10
 
-		chunk=$(jq -r '.choices[0].delta.content // empty' <<<"$chunk")
+		# workaround: https://stackoverflow.com/a/15184414
+		chunk=$(
+			jq -r '.choices[0].delta.content // empty' <<<"$chunk"
+			printf x
+		)
+		chunk="${chunk:0:${#chunk}-2}"
 		text="$text$chunk"
 		echo -n "$chunk"
 	done
@@ -191,6 +197,11 @@ call_api() {
 		}
 		exit 0
 	} >&2
+
+	[ -n "$DEBUG_RESPONSE_FILE" ] && {
+		cat "$DEBUG_RESPONSE_FILE"
+		return
+	}
 
 	local args=("$url" --no-buffer -fsSL -H 'Content-Type: application/json' -H "Authorization: $auth")
 	[ -n "$payload_file" ] && args+=(-d @"$payload_file")
