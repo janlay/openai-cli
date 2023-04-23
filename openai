@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v2.0
+# OpenAI CLI v2.1
 #   Created by @janlay
 #
 
@@ -13,12 +13,12 @@ OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-200}"
 OPENAI_DATA_DIR="${OPENAI_DATA_DIR:-$HOME/.openai}"
 
 # defaults
-readonly _app_name=openai _app_version=2.0
+readonly _app_name=openai _app_version=2.1
 readonly default_api_version=1 default_api_name=chat/completions default_model=gpt-3.5-turbo default_topic=General
 
 declare -i chat_mode=0 dry_run=0
 declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_version=$default_api_version api_name=$default_api_name topic=$default_topic
-declare data_file temp_dir rest_args prompt_file prompt
+declare dump_file dumped_file data_file temp_dir rest_args prompt_file prompt
 
 trap cleanup EXIT
 cleanup() {
@@ -133,27 +133,29 @@ openai_embeddings() {
 }
 
 openai_chat_completions() {
-	local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"temperature\": 0.5, \"max_tokens\": $OPENAI_MAX_TOKENS}"
+	[ -n "$dumped_file" ] || {
+		local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"temperature\": 0.5, \"max_tokens\": $OPENAI_MAX_TOKENS}"
 
-	# overwrite default properties with user's
-	read_prompt
-	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '(. += $user_props) | . += {messages: []}' <<<"$payload")
+		# overwrite default properties with user's
+		read_prompt
+		[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '(. += $user_props) | . += {messages: []}' <<<"$payload")
 
-	local data
-	data=$(load_conversation | jq .messages)
-	[ "$topic" != "$default_topic" ] && {
-		if [ $chat_mode -eq 1 ]; then
-			# load all messages for chat mode
-			payload=$(jq --argjson messages "$data" 'setpath(["messages"]; $messages)' <<<"$payload")
-		else
-			# load only first message for non-chat mode
-			payload=$(jq --argjson messages "$data" 'setpath(["messages"]; [$messages[0]])' <<<"$payload")
-		fi
+		local data
+		data=$(load_conversation | jq .messages)
+		[ "$topic" != "$default_topic" ] && {
+			if [ $chat_mode -eq 1 ]; then
+				# load all messages for chat mode
+				payload=$(jq --argjson messages "$data" 'setpath(["messages"]; $messages)' <<<"$payload")
+			else
+				# load only first message for non-chat mode
+				payload=$(jq --argjson messages "$data" 'setpath(["messages"]; [$messages[0]])' <<<"$payload")
+			fi
+		}
+		# append user's prompt to messages
+		local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
+		[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
+		jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
 	}
-	# append user's prompt to messages
-	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
-	[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
-	jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
 
 	local chunk reason text
 	call_api | while read -r chunk; do
@@ -183,6 +185,12 @@ openai_chat_completions() {
 
 # shellcheck disable=SC2120
 call_api() {
+	# return dumped file if specified
+	[ -n "$dumped_file" ] && {
+		cat "$dumped_file"
+		return
+	}
+
 	local url="$OPENAI_API_ENDPOINT/v$api_version/$api_name" auth="Bearer $OPENAI_API_KEY"
 
 	# dry-run mode
@@ -198,16 +206,13 @@ call_api() {
 		exit 0
 	} >&2
 
-	[ -n "$DEBUG_RESPONSE_FILE" ] && {
-		cat "$DEBUG_RESPONSE_FILE"
-		return
-	}
-
 	local args=("$url" --no-buffer -fsSL -H 'Content-Type: application/json' -H "Authorization: $auth")
 	[ -n "$payload_file" ] && args+=(-d @"$payload_file")
 	[ $# -gt 0 ] && args+=("$@")
 
+	[ -n "$dump_file" ] && args+=(-o "$dump_file")
 	curl "${args[@]}"
+	[ -z "$dump_file" ] || exit 0
 }
 
 create_topic() {
@@ -221,12 +226,13 @@ usage() {
 
 SYNOPSIS
   ABSTRACT
-    $_app_name [-n] [-a api_name] [-v api_version] [ARGS...]
+    $_app_name [-n] [-a api_name] [-v api_version] [-o dump_file] [INPUT...]
+	$_app_name -i dumped_file
 
   DEFAULT_API (v$default_api_version/$default_api_name)
     $_app_name [-c] [+property=value...] [@TOPIC] [-f file | prompt ...]
 	prompt
-			Specify prompt string for the request to OpenAI API. This can consist of multiple
+			Prompt string for the request to OpenAI API. This can consist of multiple
 			arguments, which are considered to be separated by spaces.
 	-f file
 			A file to be read as prompt. If file is - or neither this parameter nor a prompt
@@ -234,7 +240,7 @@ SYNOPSIS
 	-c
 			Continues the topic, the default topic is '$default_topic'.
 	property=value
-			Overwrite default properties in payload. Prepend a plus sign '+' before property=value.
+			Overwrites default properties in payload. Prepend a plus sign '+' before property=value.
 			eg: +model=gpt-3.5-turbo-0301, +stream=false
 	
 	TOPICS
@@ -252,17 +258,22 @@ GLOBAL OPTIONS
 		API name, default is '$default_api_name'.
   -n
 		Dry-run mode, don't call API.
+  -o filename
+		Dumps API response to a file and exits.
+  -i filename
+		Uses specified dumped file instead of requesting API.
+		Any request-related arguments and user input are ignored.
 
   --
-  		Ignore rest of arguments, useful when unquoted prompt consists of '-'.
+  		Ignores rest of arguments, useful when unquoted prompt consists of '-'.
 
   -h
-  		Show this help" 0
+  		Shows this help" 0
 }
 
 parse() {
 	local opt
-	while getopts 'v:a:m:t:f:cnsh' opt; do
+	while getopts 'v:a:f:i:o:cnh' opt; do
 		case "$opt" in
 		c)
 			chat_mode=1
@@ -279,6 +290,12 @@ parse() {
 			;;
 		n)
 			dry_run=1
+			;;
+		i)
+			dumped_file="$OPTARG"
+			;;
+		o)
+			dump_file="$OPTARG"
 			;;
 		h | ?)
 			usage
