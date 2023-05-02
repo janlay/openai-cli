@@ -33,7 +33,7 @@ The default API `chat/completions` provides:
   You may want to add this file to a directory in `$PATH`. 
   <details>
   <summary>Further reading: curl's killer feature</summary>
-  [-OJ is a killer feature](https://daniel.haxx.se/blog/2020/09/10/store-the-curl-output-over-there/)
+  <a href="https://daniel.haxx.se/blog/2020/09/10/store-the-curl-output-over-there/"><code>-OJ</code> is a killer feature</a>
   </details>
 
 Now you can try it out!
