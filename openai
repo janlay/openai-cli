@@ -6,11 +6,16 @@
 
 set -eo pipefail
 
-# env vars can be overridden by command line arguments
+# openai-cli accepts various exported environment variables:
+#   OPENAI_API_KEY		: OpenAI's API key
+#   OPENAI_API_ENDPOINT	: Custom API endpoint
+#   OPENAI_MAX_TOKENS   : Maximum number of tokens to use
+#   OPENAI_DATA_DIR		: Directory to store data
 OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-200}"
-OPENAI_DATA_DIR="${OPENAI_DATA_DIR:-$HOME/.openai}"
+declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
+OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 
 # defaults
 readonly _app_name=openai _app_version=2.1.1
