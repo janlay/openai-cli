@@ -46,6 +46,7 @@ To begin, type `openai -h` to access the help manual.
 
 <details>
   <summary>Why are you so serious?</summary>
+  
 What happens when the `openai` command is executed without any parameters? It means that:
 - The default API used will be `chat/completions`, and the schema version will be `v1`.
 - The prompt will be read from stdin.
