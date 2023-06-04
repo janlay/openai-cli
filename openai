@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v2.1.1
+# OpenAI CLI v2.1.2
 #   Created by @janlay
 #
 
@@ -18,7 +18,7 @@ declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
 OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 
 # defaults
-readonly _app_name=openai _app_version=2.1.1
+readonly _app_name=openai _app_version=2.1.2
 readonly default_api_version=1 default_api_name=chat/completions default_model=gpt-3.5-turbo default_topic=General
 
 declare -i chat_mode=0 dry_run=0
@@ -175,6 +175,9 @@ openai_chat_completions() {
 			jq -r '.choices[0].delta.content // empty' <<<"$chunk"
 			printf x
 		)
+		# ensure chunk is not empty
+		[ ${#chunk} -ge 2 ] || continue
+
 		chunk="${chunk:0:${#chunk}-2}"
 		text="$text$chunk"
 		echo -n "$chunk"
