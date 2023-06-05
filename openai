@@ -68,7 +68,7 @@ read_prompt() {
 				word="${word:1}"
 				# determine value's type for jq
 				local options=(--arg key "${word%%=*}") value="${word#*=}" arg=--arg
-				[[ $value =~ ^[+-]?\ ?[0-9.]+$ || $value = true || $value = false || $value =~ ^[\[\{]* ]] && arg=--argjson
+				[[ $value =~ ^[+-]?\ ?[0-9.]+$ || $value = true || $value = false || $value == [\[\{]* ]] && arg=--argjson
 				options+=("$arg" value "$value")
 				props=$(jq "${options[@]}" '.[$key] = $value' <<<"$props")
 			else
