@@ -13,7 +13,7 @@ set -eo pipefail
 #   OPENAI_DATA_DIR		: Directory to store data
 OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
-OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-200}"
+OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-2000}"
 declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
 OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 
