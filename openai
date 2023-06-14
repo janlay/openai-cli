@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v2.1.2
+# OpenAI CLI v2.2
 #   Created by @janlay
 #
 
@@ -18,7 +18,7 @@ declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
 OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 
 # defaults
-readonly _app_name=openai _app_version=2.1.2
+readonly _app_name=openai _app_version=2.2
 readonly default_api_version=1 default_api_name=chat/completions default_model=gpt-3.5-turbo-0613 default_topic=General
 
 declare -i chat_mode=0 dry_run=0
@@ -41,9 +41,10 @@ load_conversation() {
 }
 
 update_conversation() {
-	local data
+	local entry="$2" data
+	entry=$(jq --arg role "$1" '. += {$role}' <<<"$entry")
 	data=$(load_conversation)
-	jq --arg role "$1" --arg content "$2" '.messages += [{$role, $content}]' <<<"$data" >"$data_file"
+	jq --argjson item "$entry" '.messages += [$item]' <<<"$data" >"$data_file"
 }
 
 save_tokens() {
@@ -162,17 +163,23 @@ openai_chat_completions() {
 		jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
 	}
 
-	local chunk reason text
+	local chunk reason text role fn_name
 	call_api | while read -r chunk; do
 		[ -z "$chunk" ] && continue
-		chunk=$(cut -d: -f2- <<<"$chunk")
-		reason=$(jq -r '.choices[0].finish_reason // empty' <<<"$chunk")
-		[ "$reason" = stop ] && break
+		chunk=$(cut -d: -f2- <<<"$chunk" | jq '.choices[0]')
+		reason=$(jq -r '.finish_reason // empty' <<<"$chunk")
+		[[ $reason = stop || $reason = function_call ]] && break
 		[ -n "$reason" ] && raise_error "API error: $reason" 10
+
+		# get role and function info from the first chunk
+		[ -z "$role" ] && {
+			role=$(jq -r '.delta.role // empty' <<<"$chunk")
+			fn_name=$(jq -r '.delta.function_call.name // empty' <<<"$chunk")
+		}
 
 		# workaround: https://stackoverflow.com/a/15184414
 		chunk=$(
-			jq -r '.choices[0].delta.content // empty' <<<"$chunk"
+			jq -r '.delta | .function_call.arguments // .content // empty' <<<"$chunk"
 			printf x
 		)
 		# ensure chunk is not empty
@@ -185,8 +192,14 @@ openai_chat_completions() {
 
 	# append response to topic file for chat mode
 	[ "$chat_mode" -eq 1 ] && {
+		if [ -n "$fn_name" ]; then
+			text=$(jq -n --arg name "$fn_name" --argjson arguments "${text:-\{\}}" '{function_call: {$name, $arguments}}')
+		else
+			text=$(jq -n --arg content "$text" '{$content}')
+		fi
+
 		update_conversation user "$prompt"
-		update_conversation assistant "$text"
+		update_conversation "$role" "$text"
 	}
 	echo
 }
