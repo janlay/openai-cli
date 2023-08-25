@@ -1,0 +1,72 @@
+pipeline:
+  name: LLM Framework
+  identifier: LLM_Framework
+  projectIdentifier: Nic_Sandbox
+  orgIdentifier: SE_Sandbox
+  tags: {}
+  stages:
+    - stage:
+        name: LLM Playground
+        identifier: LLM_Playground
+        description: ""
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: Container
+                  name: OpenAI Completion
+                  identifier: OpenAI_Completion
+                  spec:
+                    connectorRef: Nics_Registry
+                    image: tuffacton/openaicli:latest
+                    command: |-
+                      ########################
+                      # OpenAI GPT Completion
+                      ########################
+                      # Either provide a prompt as a runtime input or 
+                      # replace it below in the RESPONSE output variable
+                      #
+                      # Must configure OPENAI_API_KEY your OpenAI PAT
+                      # Uses https://github.com/tuffacton/openai-cli
+                      #########################
+                      export RESPONSE=`/openai $PROMPT`
+                    shell: Bash
+                    infrastructure:
+                      type: KubernetesDirect
+                      spec:
+                        connectorRef: nic_laptop_cluster
+                        namespace: build
+                        resources:
+                          limits:
+                            cpu: "0.5"
+                            memory: 500Mi
+                        annotations: {}
+                        labels: {}
+                        containerSecurityContext:
+                          capabilities:
+                            drop: []
+                            add: []
+                        nodeSelector: {}
+                        os: Linux
+                    outputVariables:
+                      - name: RESPONSE
+                    envVariables:
+                      OPENAI_API_KEY: <+secrets.getValue("OpenAI_PAT")>
+                      PROMPT: <+input>
+                  timeout: 2m
+              - step:
+                  type: JiraCreate
+                  name: JiraCreate
+                  identifier: JiraCreate
+                  spec:
+                    connectorRef: account.Harness_JIRA
+                    projectKey: HD
+                    issueType: Story
+                    fields:
+                      - name: Description
+                        value: "OpenAI Response: <+pipeline.stages.LLM_Playground.spec.execution.steps.OpenAI_Completion.ContainerStep.output.outputVariables.RESPONSE>"
+                      - name: Summary
+                        value: "OpenAI Prompt: <+pipeline.stages.LLM_Playground.spec.execution.steps.OpenAI_Completion.ContainerStep.spec.envVariables.PROMPT>"
+                  timeout: 10m
+        tags: {}
