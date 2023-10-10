@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v2.2.1
+# OpenAI CLI v2.2.2
 #   Created by @janlay
 #
 
@@ -20,7 +20,7 @@ declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
 OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 
 # defaults
-readonly _app_name=openai _app_version=2.2.1
+readonly _app_name=openai _app_version=2.2.2
 readonly default_api_version=1 default_api_name=chat/completions default_model="$OPENAI_CHAT_MODEL" default_topic=General
 
 declare -i chat_mode=0 dry_run=0
@@ -101,7 +101,7 @@ openai_moderations() {
 
 	# overwrite default properties with user's
 	read_prompt
-	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '. += $user_props' <<<"$payload")
+	[ -f "$prop_file" ] && payload=$(jq -n --argjson payload "$payload" '$payload | . += input' <"$prop_file")
 
 	# append user's prompt to messages
 	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
@@ -116,7 +116,7 @@ openai_images_generations() {
 
 	# overwrite default properties with user's
 	read_prompt
-	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '(. += $user_props) | . += {response_format: "url"}' <<<"$payload")
+	[ -f "$prop_file" ] && payload=$(jq -n --argjson payload "$payload" '$payload | . += input | . += {response_format: "url"}' <"$prop_file")
 
 	# append user's prompt to messages
 	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
@@ -131,7 +131,7 @@ openai_embeddings() {
 
 	# overwrite default properties with user's
 	read_prompt
-	[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '. += $user_props' <<<"$payload")
+	[ -f "$prop_file" ] && payload=$(jq -n --argjson payload "$payload" '$payload | . += input' <"$prop_file")
 
 	# append user's prompt to messages
 	local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
@@ -147,7 +147,9 @@ openai_chat_completions() {
 
 		# overwrite default properties with user's
 		read_prompt
-		[ -f "$prop_file" ] && payload=$(jq --argfile user_props "$prop_file" '(. += $user_props) | . += {messages: []}' <<<"$payload")
+		[ -f "$prop_file" ] && {
+			payload=$(jq -n --argjson payload "$payload" '$payload | . += input | . += {messages: []}' <"$prop_file")
+		}
 
 		local data
 		data=$(load_conversation | jq .messages)
