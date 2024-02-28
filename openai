@@ -29,7 +29,9 @@ declare dump_file dumped_file data_file temp_dir rest_args prompt_file prompt
 
 trap cleanup EXIT
 cleanup() {
-	[ -d "$temp_dir" ] || rm -f -- "$temp_dir"
+	if [ -d "$temp_dir" ]; then
+		rm -rf -- "$temp_dir"
+	fi
 }
 
 raise_error() {
