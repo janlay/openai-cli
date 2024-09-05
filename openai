@@ -6,6 +6,12 @@
 
 set -eo pipefail
 
+declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
+OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
+
+# Read config file?
+[ -e "$OPENAI_DATA_DIR"/config ] && . "$OPENAI_DATA_DIR"/config
+
 # openai-cli accepts various exported environment variables:
 #   OPENAI_API_KEY		: OpenAI's API key
 #   OPENAI_API_ENDPOINT	: Custom API endpoint
@@ -16,8 +22,6 @@ OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-2000}"
 OPENAI_CHAT_MODEL="${OPENAI_CHAT_MODEL:-gpt-3.5-turbo-1106}"
-declare _config_dir="${OPENAI_DATA_DIR:-$XDG_CONFIG_HOME}"
-OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 
 # defaults
 readonly _app_name=openai _app_version=2.2.2
