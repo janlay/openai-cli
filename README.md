@@ -99,6 +99,8 @@ Or you may want to run with a temporary key for one-time use:
 OPENAI_API_KEY=sk-**** openai hello
 ```
 
+Environment variables can also be set in `$HOME/.openai/config`.
+
 ## Testing your API invocations
 `openai` offers a [dry-run mode](https://en.wikipedia.org/wiki/Dry_run) that allows you to test command composition without incurring any costs. Give it a try!
 
