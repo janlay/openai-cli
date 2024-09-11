@@ -32,8 +32,9 @@ The default API `chat/completions` provides:
   ```
   You may want to add this file to a directory in `$PATH`. 
 
-  Also install the openai manual page, e.g.:
-  ```pandoc -s -f markdown -t man README.md > /usr/local/man/man1/openai.1
+  Also install the manual page, e.g.:
+  ```bash
+  pandoc -s -f markdown -t man README.md > /usr/local/man/man1/openai.1
   ```
   <details>
   <summary>Further reading: curl's killer feature</summary>
