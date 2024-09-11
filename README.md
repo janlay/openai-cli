@@ -31,6 +31,10 @@ The default API `chat/completions` provides:
   chmod +x openai
   ```
   You may want to add this file to a directory in `$PATH`. 
+
+  Also install the openai manual page, e.g.:
+  ```pandoc -s -f markdown -t man README.md > /usr/local/man/man1/openai.1
+  ```
   <details>
   <summary>Further reading: curl's killer feature</summary>
   <a href="https://daniel.haxx.se/blog/2020/09/10/store-the-curl-output-over-there/"><code>-OJ</code> is a killer feature</a>
