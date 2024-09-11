@@ -208,7 +208,7 @@ openai_chat_completions() {
 		update_conversation user "$prompt"
 		update_conversation "$role" "$text"
 	}
-	echo
+	[ "$dry_run" -eq 0 ] && echo
 }
 
 # shellcheck disable=SC2120
