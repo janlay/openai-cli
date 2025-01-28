@@ -148,7 +148,10 @@ openai_embeddings() {
 }
 
 openai_chat_completions() {
-	[ -n "$dumped_file" ] || {
+	if [ -n "$dumped_file" ]; then
+		# only succeeds when the dumped file is not streamed
+		jq -er '.choices[0].message.content' <"$dumped_file" 2>/dev/null && return
+	else
 		local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"temperature\": 0.5, \"max_tokens\": $OPENAI_MAX_TOKENS}"
 
 		# overwrite default properties with user's
@@ -172,7 +175,7 @@ openai_chat_completions() {
 		local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
 		[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
 		jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
-	}
+	fi
 
 	local chunk reason text role fn_name
 	call_api | while read -r chunk; do
