@@ -21,7 +21,7 @@ OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-2000}"
-OPENAI_CHAT_MODEL="${OPENAI_CHAT_MODEL:-gpt-3.5-turbo-1106}"
+OPENAI_CHAT_MODEL="${OPENAI_CHAT_MODEL:-gpt-4o-mini}"
 
 # defaults
 readonly _app_name=openai _app_version=2.2.2
@@ -254,7 +254,7 @@ usage() {
 SYNOPSIS
   ABSTRACT
     $_app_name [-n] [-a api_name] [-v api_version] [-o dump_file] [INPUT...]
-	$_app_name -i dumped_file
+    $_app_name -i dumped_file
 
   DEFAULT_API (v$default_api_version/$default_api_name)
     $_app_name [-c] [+property=value...] [@TOPIC] [-f file | prompt ...]
@@ -269,11 +269,11 @@ SYNOPSIS
 	property=value
 			Overwrites default properties in payload. Prepend a plus sign '+' before property=value.
 			eg: +model=gpt-3.5-turbo-0301, +stream=false
-	
+
 	TOPICS
 			Topic starts with an at sign '@'.
 			To create new topic, use \`$_app_name @new_topic initial prompt'
-  
+
   OTHER APIS
     $_app_name -a models
 
