@@ -152,7 +152,9 @@ openai_chat_completions() {
 		# only succeeds when the dumped file is not streamed
 		jq -er '.choices[0].message.content' <"$dumped_file" 2>/dev/null && return
 	else
-		local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"temperature\": 0.5, \"max_tokens\": $OPENAI_MAX_TOKENS}"
+		local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"max_completion_tokens\": $OPENAI_MAX_TOKENS}"
+		# the o1 model has limitations, see https://platform.openai.com/docs/guides/reasoning#limitations
+		[[ $default_model == o[0-9]* ]] || payload=$(jq -c ". += {temperature: 0.5}" <<<"$payload")
 
 		# overwrite default properties with user's
 		read_prompt
@@ -175,6 +177,9 @@ openai_chat_completions() {
 		local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
 		[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
 		jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
+
+		# check o1's parameters
+		jq -e 'select(.model | test("^o\\d")) and (.temperature or .top_p or .presence_penalty or .frequency_penalty .logprobs or .top_logprobs .logit_bias)' <"$payload_file" &>/dev/null && raise_error 'One or more unsupported API parameters used for model o1. See https://platform.openai.com/docs/guides/reasoning#limitations for more details.' 5
 	fi
 
 	local chunk reason text role fn_name
