@@ -148,9 +148,11 @@ openai_embeddings() {
 }
 
 openai_chat_completions() {
+	local streaming=0
 	if [ -n "$dumped_file" ]; then
 		# only succeeds when the dumped file is not streamed
 		jq -er '.choices[0].message.content' <"$dumped_file" 2>/dev/null && return
+		streaming=1
 	else
 		local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"max_completion_tokens\": $OPENAI_MAX_TOKENS}"
 		# the o1 model has limitations, see https://platform.openai.com/docs/guides/reasoning#limitations
@@ -178,36 +180,44 @@ openai_chat_completions() {
 		[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
 		jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
 
+		streaming=$(jq -e 'if .stream then 1 else 0 end' <"$payload_file")
+
 		# check o1's parameters
 		jq -e 'select(.model | test("^o\\d")) and (.temperature or .top_p or .presence_penalty or .frequency_penalty .logprobs or .top_logprobs .logit_bias)' <"$payload_file" &>/dev/null && raise_error 'One or more unsupported API parameters used for model o1. See https://platform.openai.com/docs/guides/reasoning#limitations for more details.' 5
 	fi
 
 	local chunk reason text role fn_name
-	call_api | while read -r chunk; do
-		[ -z "$chunk" ] && continue
-		chunk=$(cut -d: -f2- <<<"$chunk" | jq '.choices[0]')
-		reason=$(jq -r '.finish_reason // empty' <<<"$chunk")
-		[[ $reason = stop || $reason = function_call ]] && break
-		[ -n "$reason" ] && raise_error "API error: $reason" 10
+	if [ $streaming -eq 1 ]; then
+		call_api | while read -r chunk; do
+			[ -z "$chunk" ] && continue
+			chunk=$(cut -d: -f2- <<<"$chunk" | jq '.choices[0]')
+			reason=$(jq -r '.finish_reason // empty' <<<"$chunk")
+			[[ $reason = stop || $reason = function_call ]] && break
+			[ -n "$reason" ] && raise_error "API error: $reason" 10
 
-		# get role and function info from the first chunk
-		[ -z "$role" ] && {
-			role=$(jq -r '.delta.role // empty' <<<"$chunk")
-			fn_name=$(jq -r '.delta.function_call.name // empty' <<<"$chunk")
-		}
+			# get role and function info from the first chunk
+			[ -z "$role" ] && {
+				role=$(jq -r '.delta.role // empty' <<<"$chunk")
+				fn_name=$(jq -r '.delta.function_call.name // empty' <<<"$chunk")
+			}
 
-		# workaround: https://stackoverflow.com/a/15184414
-		chunk=$(
-			jq -r '.delta | .function_call.arguments // .content // empty' <<<"$chunk"
-			printf x
-		)
-		# ensure chunk is not empty
-		[ ${#chunk} -ge 2 ] || continue
+			# workaround: https://stackoverflow.com/a/15184414
+			chunk=$(
+				jq -r '.delta | .function_call.arguments // .content // empty' <<<"$chunk"
+				printf x
+			)
+			# ensure chunk is not empty
+			[ ${#chunk} -ge 2 ] || continue
 
-		chunk="${chunk:0:${#chunk}-2}"
-		text="$text$chunk"
-		echo -n "$chunk"
-	done
+			chunk="${chunk:0:${#chunk}-2}"
+			text="$text$chunk"
+			echo -n "$chunk"
+		done
+		[ "$dry_run" -eq 0 ] && echo
+	else
+		text=$(call_api | jq -er '.choices[0].message.content')
+		echo "$text"
+	fi
 
 	# append response to topic file for chat mode
 	[ "$chat_mode" -eq 1 ] && {
@@ -216,7 +226,6 @@ openai_chat_completions() {
 		update_conversation user "$prompt"
 		update_conversation "$role" "$text"
 	}
-	[ "$dry_run" -eq 0 ] && echo
 }
 
 # shellcheck disable=SC2120
