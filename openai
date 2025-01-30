@@ -21,11 +21,14 @@ OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-2000}"
-OPENAI_CHAT_MODEL="${OPENAI_CHAT_MODEL:-gpt-4o-mini}"
+
+# OPENAI_CHAT_MODEL is now deprecated, use OPENAI_API_MODEL instead
+OPENAI_API_MODEL="${OPENAI_API_MODEL:-$OPENAI_CHAT_MODEL}"
+OPENAI_API_MODEL="${OPENAI_API_MODEL:-gpt-4o}"
 
 # defaults
 readonly _app_name=openai _app_version=2.2.3
-readonly default_api_version=1 default_api_name=chat/completions default_model="$OPENAI_CHAT_MODEL" default_topic=General
+readonly default_api_version=1 default_api_name=chat/completions default_model="$OPENAI_API_MODEL" default_topic=General
 
 declare -i chat_mode=0 dry_run=0
 declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_version=$default_api_version api_name=$default_api_name topic=$default_topic
