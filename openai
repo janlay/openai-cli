@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v2.2.3
+# OpenAI CLI v3.0
 #   Created by @janlay
 #
 
@@ -15,23 +15,19 @@ OPENAI_DATA_DIR="${_config_dir:-$HOME/.openai}"
 # openai-cli accepts various exported environment variables:
 #   OPENAI_API_KEY		: OpenAI's API key
 #   OPENAI_API_ENDPOINT	: Custom API endpoint
-#   OPENAI_MAX_TOKENS   : Maximum number of tokens to use
-#	OPENAI_CHAT_MODEL	: ChatGPT model
+#	OPENAI_API_MODEL	: Which model to use
 #   OPENAI_DATA_DIR		: Directory to store data
-OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com}"
+OPENAI_API_ENDPOINT="${OPENAI_API_ENDPOINT:-https://api.openai.com/v1}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
-OPENAI_MAX_TOKENS="${OPENAI_MAX_TOKENS:-2000}"
-
-# OPENAI_CHAT_MODEL is now deprecated, use OPENAI_API_MODEL instead
-OPENAI_API_MODEL="${OPENAI_API_MODEL:-$OPENAI_CHAT_MODEL}"
 OPENAI_API_MODEL="${OPENAI_API_MODEL:-gpt-4o}"
 
 # defaults
-readonly _app_name=openai _app_version=2.2.3
-readonly default_api_version=1 default_api_name=chat/completions default_model="$OPENAI_API_MODEL" default_topic=General
+readonly _app_name=openai _app_version=3.0
+readonly provider="${OPENAI_COMPATIBLE_PROVIDER:-OPENAI}"
+readonly default_api_name=chat/completions default_model="$OPENAI_API_MODEL" default_topic=General
 
 declare -i chat_mode=0 dry_run=0
-declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_version=$default_api_version api_name=$default_api_name topic=$default_topic
+declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_name=$default_api_name topic=$default_topic
 declare dump_file dumped_file data_file temp_dir rest_args prompt_file prompt
 
 trap cleanup EXIT
@@ -39,6 +35,11 @@ cleanup() {
 	if [ -d "$temp_dir" ]; then
 		rm -rf -- "$temp_dir"
 	fi
+}
+
+get_env() {
+	local env_key="${provider}_${1}"
+	echo "${!env_key}"
 }
 
 raise_error() {
@@ -157,9 +158,9 @@ openai_chat_completions() {
 		jq -er '.choices[0].message.content' <"$dumped_file" 2>/dev/null && return
 		streaming=1
 	else
-		local prop_file="$temp_dir/props" payload="{\"model\": \"$default_model\", \"stream\": true, \"max_completion_tokens\": $OPENAI_MAX_TOKENS}"
-		# the o1 model has limitations, see https://platform.openai.com/docs/guides/reasoning#limitations
-		[[ $default_model == o[0-9]* ]] || payload=$(jq -c ". += {temperature: 0.5}" <<<"$payload")
+		local prop_file="$temp_dir/props" model payload
+		model=$(get_env API_MODEL)
+		payload="{\"model\": \"$model\", \"stream\": true}"
 
 		# overwrite default properties with user's
 		read_prompt
@@ -223,12 +224,12 @@ openai_chat_completions() {
 	fi
 
 	# append response to topic file for chat mode
-	[ "$chat_mode" -eq 1 ] && {
+	if [ "$chat_mode" -eq 1 ]; then
 		[ -n "$fn_name" ] && text=$(jq -n --arg name "$fn_name" --argjson arguments "${text:-\{\}}" '{function_call: {$name, $arguments}}')
 
 		update_conversation user "$prompt"
 		update_conversation "$role" "$text"
-	}
+	fi
 }
 
 # shellcheck disable=SC2120
@@ -239,7 +240,7 @@ call_api() {
 		return
 	}
 
-	local url="$OPENAI_API_ENDPOINT/v$api_version/$api_name" auth="Bearer $OPENAI_API_KEY"
+	local url="$(get_env API_ENDPOINT)/$api_name" auth="Bearer $(get_env API_KEY)"
 
 	# dry-run mode
 	[ "$dry_run" -eq 1 ] && {
@@ -273,10 +274,10 @@ usage() {
 
 SYNOPSIS
   ABSTRACT
-    $_app_name [-n] [-a api_name] [-v api_version] [-o dump_file] [INPUT...]
+    $_app_name [-n] [-a api_name] [-o dump_file] [INPUT...]
     $_app_name -i dumped_file
 
-  DEFAULT_API (v$default_api_version/$default_api_name)
+  DEFAULT_API ($default_api_name)
     $_app_name [-c] [+property=value...] [@TOPIC] [-f file | prompt ...]
 	prompt
 			Prompt string for the request to OpenAI API. This can consist of multiple
@@ -299,8 +300,6 @@ SYNOPSIS
 
 GLOBAL OPTIONS
   Global options apply to all APIs.
-  -v version
-		API version, default is '$default_api_version'.
   -a name
 		API name, default is '$default_api_name'.
   -n
@@ -324,9 +323,6 @@ parse() {
 		case "$opt" in
 		c)
 			chat_mode=1
-			;;
-		v)
-			api_version="$OPTARG"
 			;;
 		a)
 			api_name="$OPTARG"
@@ -369,6 +365,17 @@ check_bin() {
 }
 
 main() {
+	# show compatible provider if applicable
+	if [ "${SUPPRESS_PROVIDER_TIPS:-0}" -eq 0 ] && [ -n "$OPENAI_COMPATIBLE_PROVIDER" ]; then
+		echo "OpenAI compatible provider: $OPENAI_COMPATIBLE_PROVIDER" >&2
+	fi
+
+	# check required config
+	local key
+	for key in API_ENDPOINT API_KEY API_MODEL; do
+		[ -z "$(get_env "$key")" ] && raise_error "Missing environment variable: ${provider}_$key." 1
+	done
+
 	parse "$@"
 	check_bin jq 10
 
@@ -377,8 +384,6 @@ main() {
 	temp_dir=$(mktemp -d)
 
 	if [[ $topic == "$default_topic" || -f "$data_file" ]]; then
-		[ -z "$OPENAI_API_KEY" ] && raise_error 'OpenAI API key is required.' 11
-
 		local fn="openai_${api_name//\//_}"
 		[ "$(type -t "$fn")" = function ] || raise_error "API '$api_name' is not available." 12
 		"$fn"

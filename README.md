@@ -5,6 +5,12 @@ A universal cli for OpenAI, written in BASH.
 - [x] Scalable architecture allows for continuous support of new APIs.
 - [x] Custom API name, version, and all relevant properties.
 - [x] Dry-run mode (without actually initiating API calls) to facilitate debugging of APIs and save costs.
+- [x] New in v3: Supports any AI services that provide OpenAI-compatible APIs.
+
+Important changes in version 3:
+- `-v api_version` in previous versions is now removed. If you have a custom `OPENAI_API_ENDPOINT`, you need to append API version in it. The internal API version is remove as some services like DeepSeek don't have version prefix in `/v1/chat/completions`.
+- `OPENAI_CHAT_MODEL` no longer supported, use `OPENAI_API_MODEL` instead.
+- By default, the request no longer includes optional parameters `temperature` / `max_tokens`. You need to explictly add `+temperature` / `+max_tokens` to customize if necessary.
 
 Available APIs:
 - [x] `chat/completions` (default API)
@@ -105,6 +111,27 @@ OPENAI_API_KEY=sk-**** openai hello
 ```
 
 Environment variables can also be set in `$HOME/.openai/config`.
+
+## Working with compatible AI services
+You can set the environment variable `OPENAI_COMPATIBLE_PROVIDER` to another service name in uppercase, such as `DEEPSEEK`. Then set the three environment variables `DEEPSEEK_API_ENDPOINT`, `DEEPSEEK_API_KEY`, and `DEEPSEEK_API_MODEL` respectively:
+```bash
+export OPENAI_COMPATIBLE_PROVIDER=DEEPSEEK
+export DEEPSEEK_API_ENDPOINT=https://api.deepseek.com
+export DEEPSEEK_API_KEY=sk-***
+export DEEPSEEK_API_MODEL=deepseek-chat
+```
+
+You may have noticed that if you set `OPENAI_COMPATIBLE_PROVIDER` to `FOO`, you also need to set `FOO_API_ENDPOINT`, `FOO_API_KEY`, and `FOO_API_MODEL` accordingly.
+
+After gathering information on multiple AI providers, you can switch the AI service by setting a temporary environment variable, `OPENAI_COMPATIBLE_PROVIDER`, as shown below:
+```bash
+# Switch to DeepSeek
+OPENAI_COMPATIBLE_PROVIDER=DEEPSEEK openai
+# Switch to Qwen
+OPENAI_COMPATIBLE_PROVIDER=QWEN openai
+# Switch to the default provider (OpenAI)
+OPENAI_COMPATIBLE_PROVIDER= openai
+```
 
 ## Testing your API invocations
 `openai` offers a [dry-run mode](https://en.wikipedia.org/wiki/Dry_run) that allows you to test command composition without incurring any costs. Give it a try!
