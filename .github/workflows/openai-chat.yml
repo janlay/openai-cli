@@ -1,0 +1,72 @@
+name: OpenAI Chat
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenAI model to use.
+        required: true
+        default: gpt-4o-mini
+      topic:
+        description: Temporary chat topic name.
+        required: true
+        default: actions-chat-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Ask twice in one chat
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_MODEL: ${{ inputs.model }}
+          OPENAI_DATA_DIR: ${{ runner.temp }}/openai-cli
+          TOPIC: ${{ inputs.topic }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::Configure the OPENAI_API_KEY repository secret before running this workflow."
+            exit 1
+          fi
+
+          chmod +x ./openai
+          mkdir -p "$OPENAI_DATA_DIR"
+
+          ./openai @"$TOPIC" 'You are a concise smoke-test assistant. Keep answers short.'
+
+          first="$(./openai -c @"$TOPIC" +stream=false 'First question: answer with only the word alpha.')"
+          second="$(./openai -c @"$TOPIC" +stream=false 'Second question: what word did you answer before? Answer in one short sentence.')"
+
+          if [ -z "$first" ] || [ -z "$second" ]; then
+            echo "::error::OpenAI returned an empty chat response."
+            exit 1
+          fi
+
+          jq -e '.messages | length >= 5' "$OPENAI_DATA_DIR/$TOPIC.json" >/dev/null
+          jq -e '.usage | length >= 2' "$OPENAI_DATA_DIR/$TOPIC.json" >/dev/null
+
+          {
+            echo "### First response"
+            echo
+            echo '```text'
+            echo "$first"
+            echo '```'
+            echo
+            echo "### Second response"
+            echo
+            echo '```text'
+            echo "$second"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

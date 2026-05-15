@@ -1,0 +1,59 @@
+name: OpenAI Single Question
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenAI model to use.
+        required: true
+        default: gpt-4o-mini
+      prompt:
+        description: Prompt to send once.
+        required: true
+        default: Reply with exactly "openai-cli single question smoke test".
+
+permissions:
+  contents: read
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Ask once
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_MODEL: ${{ inputs.model }}
+          OPENAI_DATA_DIR: ${{ runner.temp }}/openai-cli
+          PROMPT: ${{ inputs.prompt }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::Configure the OPENAI_API_KEY repository secret before running this workflow."
+            exit 1
+          fi
+
+          chmod +x ./openai
+          mkdir -p "$OPENAI_DATA_DIR"
+
+          response="$(./openai +stream=false "$PROMPT")"
+          if [ -z "$response" ]; then
+            echo "::error::OpenAI returned an empty response."
+            exit 1
+          fi
+
+          {
+            echo "### Response"
+            echo
+            echo '```text'
+            echo "$response"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
