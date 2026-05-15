@@ -25,7 +25,7 @@ The default API `chat/completions` provides:
 - [x] Support streaming
 - [x] Support multiple topics
 - [x] Support continuous conversations.
-- [ ] Token usage
+- [x] Token usage, including request and response token counts
 
 # Installation
 - [jq](https://stedolan.github.io/jq/) is required.
@@ -254,6 +254,22 @@ Again, to see what happens, use the dry-run mode by adding `-n`. You will see th
 All use cases above are standalone queries, not converstaions. To chat with OpenAI, use `-c`. This can also continue existing topic conversation by prepending `@topic`.
 
 Please note that chat requests will quickly consume tokens, leading to increased costs.
+
+
+## Token usage
+For `chat/completions`, `openai` records token usage returned by the API for each request. The CLI prints a short summary to stderr after the response, for example:
+
+```text
+Tokens: request=12, response=34, total=46
+```
+
+Because the summary is written to stderr, stdout remains safe for piping into other commands. Token counters are also persisted in `$OPENAI_DATA_DIR`:
+
+- `total_tokens`: cumulative total tokens.
+- `prompt_tokens`: cumulative request/prompt tokens.
+- `completion_tokens`: cumulative response/completion tokens.
+
+When you use a topic, the topic JSON file also stores cumulative `prompt_tokens`, `completion_tokens`, and `total_tokens` values, plus a `usage` history array with `request_tokens`, `response_tokens`, `total_tokens`, and `created_at` for each recorded chat call. Streaming requests automatically include `stream_options.include_usage=true` so the API can return usage metadata at the end of the stream.
 
 ## Advanced
 To be continued.

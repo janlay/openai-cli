@@ -27,7 +27,7 @@ readonly provider="${OPENAI_COMPATIBLE_PROVIDER:-OPENAI}"
 readonly default_api_name=chat/completions default_model="$OPENAI_API_MODEL" default_topic=General
 
 declare -i chat_mode=0 dry_run=0
-declare tokens_file="$OPENAI_DATA_DIR/total_tokens" api_name=$default_api_name topic=$default_topic
+declare tokens_file="$OPENAI_DATA_DIR/total_tokens" prompt_tokens_file="$OPENAI_DATA_DIR/prompt_tokens" completion_tokens_file="$OPENAI_DATA_DIR/completion_tokens" api_name=$default_api_name topic=$default_topic
 declare dump_file dumped_file data_file temp_dir rest_args prompt_file prompt
 
 trap cleanup EXIT
@@ -61,15 +61,46 @@ update_conversation() {
 }
 
 save_tokens() {
-	local data num="$1"
+	local data prompt_tokens="${1:-0}" completion_tokens="${2:-0}" total_tokens="${3:-0}"
+	local created_at
+	created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 	[ -f "$data_file" ] && {
 		data=$(load_conversation)
-		jq --argjson tokens "$num" '.total_tokens += $tokens' <<<"$data" >"$data_file"
+		jq --argjson prompt_tokens "$prompt_tokens" \
+			--argjson completion_tokens "$completion_tokens" \
+			--argjson total_tokens "$total_tokens" \
+			--arg created_at "$created_at" '
+			.prompt_tokens = ((.prompt_tokens // 0) + $prompt_tokens) |
+			.completion_tokens = ((.completion_tokens // 0) + $completion_tokens) |
+			.total_tokens = ((.total_tokens // 0) + $total_tokens) |
+			.usage = ((.usage // []) + [{
+				created_at: $created_at,
+				request_tokens: $prompt_tokens,
+				response_tokens: $completion_tokens,
+				total_tokens: $total_tokens
+			}])
+		' <<<"$data" >"$data_file"
 	}
 
 	data=0
 	[ -f "$tokens_file" ] && data=$(cat "$tokens_file")
-	echo "$((data + num))" >"$tokens_file"
+	echo "$((data + total_tokens))" >"$tokens_file"
+
+	data=0
+	[ -f "$prompt_tokens_file" ] && data=$(cat "$prompt_tokens_file")
+	echo "$((data + prompt_tokens))" >"$prompt_tokens_file"
+
+	data=0
+	[ -f "$completion_tokens_file" ] && data=$(cat "$completion_tokens_file")
+	echo "$((data + completion_tokens))" >"$completion_tokens_file"
+}
+
+print_token_usage() {
+	local prompt_tokens="$1" completion_tokens="$2" total_tokens="$3"
+	[ "$dry_run" -eq 0 ] || return
+	[ "$total_tokens" -gt 0 ] || return
+	echo "Tokens: request=$prompt_tokens, response=$completion_tokens, total=$total_tokens" >&2
 }
 
 read_prompt() {
@@ -183,20 +214,40 @@ openai_chat_completions() {
 		local payload_file="$temp_dir/payload" input_file="$temp_dir/prompt"
 		[ -f "$input_file" ] || input_file="${prompt_file:-/dev/stdin}"
 		jq -Rs -cn --argjson payload "$payload" '$payload | .messages += [{role: "user", content: input}]' "$input_file" >"$payload_file"
+		prompt=$(jq -r '.messages[-1].content' <"$payload_file")
 
 		streaming=$(jq -e 'if .stream then 1 else 0 end' <"$payload_file")
+		if [ "$streaming" -eq 1 ]; then
+			jq '.stream_options = ((.stream_options // {}) + {include_usage: true})' <"$payload_file" >"$payload_file.tmp"
+			mv "$payload_file.tmp" "$payload_file"
+		fi
 
 		# check o1's parameters
 		jq -e 'select(.model | test("^o\\d")) and (.temperature or .top_p or .presence_penalty or .frequency_penalty .logprobs or .top_logprobs .logit_bias)' <"$payload_file" &>/dev/null && raise_error 'One or more unsupported API parameters used for model o1. See https://platform.openai.com/docs/guides/reasoning#limitations for more details.' 5
 	fi
 
-	local chunk reason text role fn_name
+	local chunk line reason response text role fn_name
+	local prompt_tokens=0 completion_tokens=0 total_tokens=0
 	if [ $streaming -eq 1 ]; then
-		call_api | while read -r chunk; do
-			[ -z "$chunk" ] && continue
-			chunk=$(cut -d: -f2- <<<"$chunk" | jq '.choices[0]')
+		while read -r line; do
+			[ -z "$line" ] && continue
+			[[ $line == data:* ]] || continue
+			chunk=${line#data:}
+			chunk=${chunk# }
+			[ "$chunk" = '[DONE]' ] && break
+
+			local usage
+			usage=$(jq -c '.usage // empty' <<<"$chunk")
+			if [ -n "$usage" ]; then
+				prompt_tokens=$(jq -r '.prompt_tokens // 0' <<<"$usage")
+				completion_tokens=$(jq -r '.completion_tokens // 0' <<<"$usage")
+				total_tokens=$(jq -r '.total_tokens // 0' <<<"$usage")
+			fi
+
+			[ "$(jq '.choices | length' <<<"$chunk")" -gt 0 ] || continue
+			chunk=$(jq '.choices[0]' <<<"$chunk")
 			reason=$(jq -r '.finish_reason // empty' <<<"$chunk")
-			[[ $reason = stop || $reason = function_call ]] && break
+			[[ $reason = stop || $reason = function_call ]] && continue
 			[ -n "$reason" ] && raise_error "API error: $reason" 10
 
 			# get role and function info from the first chunk
@@ -216,12 +267,24 @@ openai_chat_completions() {
 			chunk="${chunk:0:${#chunk}-2}"
 			text="$text$chunk"
 			echo -n "$chunk"
-		done
+		done < <(call_api)
 		[ "$dry_run" -eq 0 ] && echo
 	else
-		text=$(call_api | jq -er '.choices[0].message.content')
+		response=$(call_api)
+		text=$(jq -er '.choices[0].message.content' <<<"$response")
+		role=$(jq -r '.choices[0].message.role // "assistant"' <<<"$response")
+		prompt_tokens=$(jq -r '.usage.prompt_tokens // 0' <<<"$response")
+		completion_tokens=$(jq -r '.usage.completion_tokens // 0' <<<"$response")
+		total_tokens=$(jq -r '.usage.total_tokens // 0' <<<"$response")
 		echo "$text"
 	fi
+
+	if [ "$total_tokens" -gt 0 ]; then
+		save_tokens "$prompt_tokens" "$completion_tokens" "$total_tokens"
+		print_token_usage "$prompt_tokens" "$completion_tokens" "$total_tokens"
+	fi
+
+	[ -n "$role" ] || role=assistant
 
 	# append response to topic file for chat mode
 	if [ "$chat_mode" -eq 1 ]; then
