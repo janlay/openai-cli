@@ -8,9 +8,9 @@ A universal cli for OpenAI, written in BASH.
 - [x] New in v3: Supports any AI services that provide OpenAI-compatible APIs.
 
 Important changes in version 3:
-- `-v api_version` in previous versions is now removed. If you have a custom `OPENAI_API_ENDPOINT`, you need to append API version in it. The internal API version is remove as some services like DeepSeek don't have version prefix in `/v1/chat/completions`.
+- `-v api_version` in previous versions is now removed. If you have a custom `OPENAI_API_ENDPOINT`, you need to append API version in it. The internal API version is removed as some services like DeepSeek don't have version prefix in `/v1/chat/completions`.
 - `OPENAI_CHAT_MODEL` no longer supported, use `OPENAI_API_MODEL` instead.
-- By default, the request no longer includes optional parameters `temperature` / `max_tokens`. You need to explictly add `+temperature` / `+max_tokens` to customize if necessary.
+- By default, the request no longer includes optional parameters `temperature` / `max_tokens`. You need to explicitly add `+temperature` / `+max_tokens` to customize if necessary.
 
 Available APIs:
 - [x] `chat/completions` (default API)
@@ -139,7 +139,7 @@ OPENAI_COMPATIBLE_PROVIDER= openai
 ```bash
 openai -n hello, world!
 
-# This would be same:
+# This would be the same:
 openai -n 'hello, world!'
 ```
 
@@ -183,7 +183,7 @@ echo 'hello, world!' | openai -n
 <details>
 <summary>For BASH gurus</summary>
 
-This would be same:
+This would be the same:
 ```bash
 echo 'hello, world!' >hello.txt
 openai -n <hello.txt
@@ -200,7 +200,7 @@ openai -n <<(echo 'hello, world!')
 ```
 </details>
 
-It seems you have understood the basic usage. Try to get real answer from OpenAI:
+It seems you have understood the basic usage. Try to get a real answer from OpenAI:
 
 ```bash
 openai hello, world!
@@ -217,9 +217,9 @@ Hello there! How can I assist you today?
 </details>
 
 ## Topics
-Topic starts with a `@` sign. so `openai @translate Hello, world!` means calling the specified topic `translate`.
+Topic starts with a `@` sign, so `openai @translate Hello, world!` means calling the specified topic `translate`.
 
-To create new topic, like translate, with the initial prompt (system role, internally):
+To create a new topic, like translate, with the initial prompt (system role, internally):
 ```bash
 openai @translate 'Translate, no other words: Chinese -> English, Non-Chinese -> Chinese'
 ```
@@ -228,7 +228,7 @@ Then you can use the topic by
 ```bash
 openai @translate 'Hello, world!'
 ```
-You should get answer like `你好，世界！`.
+You should get an answer like `你好，世界！`.
 
 Again, to see what happens, use the dry-run mode by adding `-n`. You will see the payload would be sent:
 ```json
@@ -251,7 +251,7 @@ Again, to see what happens, use the dry-run mode by adding `-n`. You will see th
 ```
 
 ## Chatting
-All use cases above are standalone queries, not converstaions. To chat with OpenAI, use `-c`. This can also continue existing topic conversation by prepending `@topic`.
+All use cases above are standalone queries, not conversations. To chat with OpenAI, use `-c`. This can also continue existing topic conversation by prepending `@topic`.
 
 Please note that chat requests will quickly consume tokens, leading to increased costs.
 

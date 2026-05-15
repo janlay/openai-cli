@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v3.0
+# OpenAI CLI v3.1
 #   Created by @janlay
 #
 
@@ -22,7 +22,7 @@ OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 OPENAI_API_MODEL="${OPENAI_API_MODEL:-gpt-4o}"
 
 # defaults
-readonly _app_name=openai _app_version=3.0
+readonly _app_name=openai _app_version=3.1
 readonly provider="${OPENAI_COMPATIBLE_PROVIDER:-OPENAI}"
 readonly default_api_name=chat/completions default_model="$OPENAI_API_MODEL" default_topic=General
 
