@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   chat:
+    if: github.actor == 'janlay'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
