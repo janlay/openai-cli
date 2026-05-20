@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAI CLI v3.1
+# OpenAI CLI v3.2
 #   Created by @janlay
 #
 
@@ -24,11 +24,11 @@ OPENAI_API_MODEL="${OPENAI_API_MODEL:-gpt-4o}"
 
 # defaults
 # shellcheck disable=SC2034
-readonly _app_name=openai _app_version=3.1 default_model="$OPENAI_API_MODEL"
+readonly _app_name=openai _app_version=3.2 default_model="$OPENAI_API_MODEL"
 readonly provider="${OPENAI_COMPATIBLE_PROVIDER:-OPENAI}"
 readonly default_api_name=chat/completions default_topic=General
 
-declare -i chat_mode=0 dry_run=0
+declare -i chat_mode=0 dry_run=0 list_topics_mode=0
 declare tokens_file="$OPENAI_DATA_DIR/total_tokens" prompt_tokens_file="$OPENAI_DATA_DIR/prompt_tokens" completion_tokens_file="$OPENAI_DATA_DIR/completion_tokens" api_name=$default_api_name topic=$default_topic
 declare dump_file dumped_file data_file temp_dir rest_args prompt_file prompt
 
@@ -336,6 +336,17 @@ create_topic() {
 	raise_error "Topic '$topic' created with initial prompt '${rest_args[*]}'" 0
 }
 
+show_topics() {
+	local file name
+	[ -d "$OPENAI_DATA_DIR" ] || return 0
+
+	for file in "$OPENAI_DATA_DIR"/*.json; do
+		[ -e "$file" ] || continue
+		name="${file##*/}"
+		echo "${name%.json}"
+	done
+}
+
 usage() {
 	raise_error "OpenAI Client v$_app_version
 
@@ -343,6 +354,7 @@ SYNOPSIS
   ABSTRACT
     $_app_name [-n] [-a api_name] [-o dump_file] [INPUT...]
     $_app_name -i dumped_file
+    $_app_name -l
 
   DEFAULT_API ($default_api_name)
     $_app_name [-c] [+property=value...] [@TOPIC] [-f file | prompt ...]
@@ -376,6 +388,8 @@ GLOBAL OPTIONS
   -i filename
 		Uses specified dumped file instead of requesting API.
 		Any request-related arguments and user input are ignored.
+  -l
+		Lists available topics and exits.
 
   --
   		Ignores rest of arguments, useful when unquoted prompt consists of '-'.
@@ -386,7 +400,7 @@ GLOBAL OPTIONS
 
 parse() {
 	local opt
-	while getopts 'v:a:f:i:o:cnh' opt; do
+	while getopts 'v:a:f:i:o:cnhl' opt; do
 		case "$opt" in
 		c)
 			chat_mode=1
@@ -406,6 +420,9 @@ parse() {
 			;;
 		o)
 			dump_file="$OPTARG"
+			;;
+		l)
+			list_topics_mode=1
 			;;
 		h | ?)
 			usage
@@ -432,6 +449,13 @@ check_bin() {
 }
 
 main() {
+	parse "$@"
+
+	[ $list_topics_mode -eq 0 ] || {
+		show_topics
+		exit 0
+	}
+
 	# show compatible provider if applicable
 	if [ "${SUPPRESS_PROVIDER_TIPS:-0}" -eq 0 ] && [ -n "$OPENAI_COMPATIBLE_PROVIDER" ]; then
 		echo "OpenAI compatible provider: $OPENAI_COMPATIBLE_PROVIDER" >&2
@@ -443,7 +467,6 @@ main() {
 		[ -z "$(get_env "$key")" ] && raise_error "Missing environment variable: ${provider}_$key." 1
 	done
 
-	parse "$@"
 	check_bin jq 10
 
 	mkdir -p "$OPENAI_DATA_DIR"

@@ -80,6 +80,8 @@ The best way to understand how to use `openai` is to see various usage cases.
   `openai @en2fr Translate to French`
 - Use existing topic  
   `openai @en2fr Hello, world!`
+- List topics  
+  `openai -l`
 - Read prompt from clipboard then send result to another topic  
   `pbpaste | openai | openai @en2fr`
 
@@ -101,7 +103,7 @@ There are multiple ways to obtain a prompt using `openai`:
 Choose any one you like :-)
 
 ## OpenAI key
-`$OPENAI_API_KEY` must be available to use this tool. Prepare your OpenAI key in `~/.profile` file by adding this line:
+`$OPENAI_API_KEY` must be available to call OpenAI APIs. Prepare your OpenAI key in `~/.profile` file by adding this line:
 ```bash
 export OPENAI_API_KEY=sk-****
 ```
@@ -229,6 +231,11 @@ Then you can use the topic by
 openai @translate 'Hello, world!'
 ```
 You should get an answer like `你好，世界！`.
+
+To list available topics:
+```bash
+openai -l
+```
 
 Again, to see what happens, use the dry-run mode by adding `-n`. You will see the payload would be sent:
 ```json
